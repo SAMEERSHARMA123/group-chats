@@ -56,7 +56,7 @@ const typeDefs = gql`
 
   type Query {
     users: [User]
-    getMe(userId: ID!) : User
+    getMe: User
     getAllPosts(userId : ID!): [Post]
     searchUsers(username: String!): [User]
     suggestedUsers(userId: ID!): [User]

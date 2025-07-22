@@ -49,9 +49,9 @@ const VideoUpload = ({ show, onClose, onSuccess }) => {
   }
   
   // ✅ Check file size (100MB limit)
-  const maxSize = 100 * 1024 * 1024; // 100MB
+  const maxSize = 300 * 1024 * 1024; // 300MB
   if (file.size > maxSize) {
-    alert(`❌ Video file is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed size is 100MB.`);
+    alert(`❌ Video file is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed size is 300MB.`); 
     setVideo(null);
     return;
   }

@@ -41,6 +41,33 @@ try {
       socket.emit("join", user.id.toString());
     }
   });
+
+  // Group Chat Socket Events
+  socket.joinGroup = (groupId) => {
+    if (groupId) {
+      socket.emit("joinGroup", groupId);
+      console.log(`Joined group room: ${groupId}`);
+    }
+  };
+
+  socket.leaveGroup = (groupId) => {
+    if (groupId) {
+      socket.emit("leaveGroup", groupId);
+      console.log(`Left group room: ${groupId}`);
+    }
+  };
+
+  socket.sendGroupTyping = (groupId, isTyping, userName) => {
+    if (groupId) {
+      socket.emit("groupTyping", { groupId, isTyping, userName });
+    }
+  };
+
+  socket.markGroupMessageRead = (messageId, groupId) => {
+    if (messageId && groupId) {
+      socket.emit("markGroupMessageRead", { messageId, groupId });
+    }
+  };
   
   socket.on("connect_error", (error) => {
     console.error("Socket connection error:", error);

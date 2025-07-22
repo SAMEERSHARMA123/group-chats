@@ -18,23 +18,34 @@ const chatTypeDefs = require('./ChatGraphQL/typeDefs');
 const chatResolvers = require('./ChatGraphQL/resolvers');
 const videoTypeDefs = require('./VideoGraphQL/typeDefs');
 const videoResolvers = require('./VideoGraphQL/resolvers');
+const groupTypeDefs = require('./GroupGraphQL/typeDefs');
+const groupResolvers = require('./GroupGraphQL/resolvers');
 
 // Connect DB
 DB();
 
 const app = express();
 
+// Add timeout middleware for large uploads
+app.use((req, res, next) => {
+  // Set timeout for large file uploads - increased to 10 minutes
+  req.setTimeout(600000); // 10 minutes
+  res.setTimeout(600000); // 10 minutes
+  next();
+});
+
 // ✅ Increase Express JSON body limit for large uploads
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ limit: '500mb', extended: true, parameterLimit: 50000 }));
 
 app.use(cookieParser());
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 
-// ✅ Increase GraphQL upload limits to 100MB
+// ✅ Increase GraphQL upload limits to 500MB
 app.use(graphqlUploadExpress({ 
-  maxFileSize: 100*1024*1024,  // 100MB limit
-  maxFiles: 2  // Allow video + thumbnail
+  maxFileSize: 500*1024*1024,  // 500MB limit
+  maxFiles: 2,  // Allow video + thumbnail
+  maxFieldSize: 500*1024*1024  // Field size limit
 }));
 
 // Optional: GraphQL request logger
@@ -45,8 +56,13 @@ app.use('/graphql', express.json(), (req, res, next) => {
   next();
 });
 
-// Create HTTP server (for Socket.io)
+// Create HTTP server (for Socket.io) with increased timeout
 const httpServer = http.createServer(app);
+
+// Set server timeout for large uploads
+httpServer.timeout = 600000; // 10 minutes
+httpServer.keepAliveTimeout = 600000; // 10 minutes
+httpServer.headersTimeout = 610000; // 10 minutes + 10 seconds
 
 // Initialize socket.io
 let io;
@@ -72,6 +88,8 @@ app.set("io", io);
 
 // Import User model for updating online status
 const User = require('./Models/user');
+const Group = require('./Models/Group');
+const GroupMessage = require('./Models/GroupMessage');
 
 // Track online users
 const onlineUsers = new Map();
@@ -339,6 +357,156 @@ socket.on("call-cancelled", ({ roomID }) => {
         console.error("Error handling ping:", error);
       }
     });
+
+    // ========== GROUP CHAT SOCKET EVENTS ==========
+    
+    // Join group rooms
+    socket.on("joinGroup", (groupId) => {
+      try {
+        if (groupId && socket.userId) {
+          socket.join(`group_${groupId}`);
+          console.log(`🏠 User ${socket.userId} joined group room: group_${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error joining group room:", error);
+      }
+    });
+
+    // Leave group rooms
+    socket.on("leaveGroup", (groupId) => {
+      try {
+        if (groupId && socket.userId) {
+          socket.leave(`group_${groupId}`);
+          console.log(`🚪 User ${socket.userId} left group room: group_${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error leaving group room:", error);
+      }
+    });
+
+    // Handle group message typing
+    socket.on("groupTyping", async ({ groupId, isTyping, userName }) => {
+      try {
+        if (groupId && socket.userId) {
+          // Fetch the user's profile image from the database
+          const user = await User.findById(socket.userId).select('profileImage');
+          socket.to(`group_${groupId}`).emit("groupUserTyping", {
+            userId: socket.userId,
+            userName: userName || "Someone",
+            profileImage: user?.profileImage || "",
+            isTyping,
+            groupId
+          });
+          console.log(`⌨️ User ${socket.userId} ${isTyping ? 'started' : 'stopped'} typing in group ${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error handling group typing:", error);
+      }
+    });
+
+    // Handle group message read status
+    socket.on("markGroupMessageRead", async ({ messageId, groupId }) => {
+      try {
+        if (messageId && groupId && socket.userId) {
+          // This will be handled by GraphQL mutation, but we can emit real-time update
+          socket.to(`group_${groupId}`).emit("groupMessageRead", {
+            messageId,
+            userId: socket.userId,
+            readAt: new Date()
+          });
+          console.log(`📖 User ${socket.userId} read message ${messageId} in group ${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error handling group message read:", error);
+      }
+    });
+
+    // Handle group member online status
+    socket.on("getGroupMembersStatus", async (groupId) => {
+      try {
+        if (groupId && socket.userId) {
+          const Group = require('./Models/Group');
+          const group = await Group.findById(groupId).populate('members', '_id isOnline lastActive');
+          
+          if (group && group.members.some(member => member._id.toString() === socket.userId)) {
+            const membersStatus = group.members.map(member => ({
+              userId: member._id,
+              isOnline: member.isOnline,
+              lastActive: member.lastActive
+            }));
+            
+            socket.emit("groupMembersStatus", {
+              groupId,
+              membersStatus
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error getting group members status:", error);
+      }
+    });
+
+    // Handle group voice/video call events
+    socket.on("startGroupCall", ({ groupId, callType, roomId }) => {
+      try {
+        if (groupId && socket.userId) {
+          socket.to(`group_${groupId}`).emit("groupCallStarted", {
+            callerId: socket.userId,
+            groupId,
+            callType, // 'voice' or 'video'
+            roomId
+          });
+          console.log(`📞 User ${socket.userId} started ${callType} call in group ${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error starting group call:", error);
+      }
+    });
+
+    socket.on("joinGroupCall", ({ groupId, roomId }) => {
+      try {
+        if (groupId && socket.userId) {
+          socket.to(`group_${groupId}`).emit("userJoinedGroupCall", {
+            userId: socket.userId,
+            groupId,
+            roomId
+          });
+          console.log(`📞 User ${socket.userId} joined group call in group ${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error joining group call:", error);
+      }
+    });
+
+    socket.on("leaveGroupCall", ({ groupId, roomId }) => {
+      try {
+        if (groupId && socket.userId) {
+          socket.to(`group_${groupId}`).emit("userLeftGroupCall", {
+            userId: socket.userId,
+            groupId,
+            roomId
+          });
+          console.log(`📞 User ${socket.userId} left group call in group ${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error leaving group call:", error);
+      }
+    });
+
+    socket.on("endGroupCall", ({ groupId, roomId }) => {
+      try {
+        if (groupId && socket.userId) {
+          socket.to(`group_${groupId}`).emit("groupCallEnded", {
+            endedBy: socket.userId,
+            groupId,
+            roomId
+          });
+          console.log(`📞 User ${socket.userId} ended group call in group ${groupId}`);
+        }
+      } catch (error) {
+        console.error("Error ending group call:", error);
+      }
+    });
   } catch (error) {
     console.error("Error in socket connection handler:", error);
   }
@@ -347,25 +515,39 @@ socket.on("call-cancelled", ({ roomID }) => {
 // Start Apollo Server
 async function startServer() {
   const server = new ApolloServer({
-    typeDefs: [userTypeDefs, chatTypeDefs, videoTypeDefs],
-    resolvers: [userResolvers, chatResolvers, videoResolvers],
+    typeDefs: [userTypeDefs, chatTypeDefs, videoTypeDefs, groupTypeDefs],
+    resolvers: [userResolvers, chatResolvers, videoResolvers, groupResolvers],
+    uploads: false, // ✅ Yeh likhna zaroori hai if using graphqlUploadExpress()
     context: ({ req, res }) => {
       const token = req.cookies.token;
       const io = req.app.get("io");
-
-      if (!token) return { req, res, io };
-
+      
+      console.log('🔍 GraphQL Context - Token present:', !!token);
+  
+      if (!token) {
+        console.log('❌ No token found in cookies');
+        return { req, res, io };
+      }
+  
       try {
         const user = jwt.verify(token, process.env.JWT_SECRET);
+        console.log('✅ User authenticated:', { id: user.id, name: user.name });
         return { req, res, user, io };
       } catch (err) {
+        console.log('❌ Token verification failed:', err.message);
         return { req, res, io };
       }
     },
-    // ✅ Increase Apollo Server upload limits
-    uploads: {
-      maxFileSize: 100 * 1024 * 1024, // 100MB
-      maxFiles: 2
+    // Add timeout configuration
+    formatError: (err) => {
+      console.error('GraphQL Error:', err);
+      return err;
+    },
+    // Increase timeout for large operations
+    playground: {
+      settings: {
+        'request.credentials': 'include',
+      },
     },
   });
 
@@ -376,6 +558,11 @@ async function startServer() {
     cors: {
       origin: 'http://localhost:3000',
       credentials: true,
+    },
+    // Add timeout for middleware
+    bodyParserConfig: {
+      limit: '500mb',
+      timeout: 600000, // 10 minutes
     },
   });
 

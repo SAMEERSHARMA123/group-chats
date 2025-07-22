@@ -26,18 +26,21 @@ const resolvers = {
     users: async () =>
       await User.find().select('id name username email phone profileImage bio createTime isOnline lastActive'),
 
-      getMe: async (_ ,{userId}) =>{
-        try{
+      getMe: async (_, args, { user }) => {
+        try {
+          if (!user) {
+            throw new Error('Authentication required');
+          }
 
-     const st = await User.findOne({ _id: userId }).populate('posts')
-    .populate('followers')
-    .populate('following');
-     
-      return st
-        }
-        catch(error){
-    console.log(error);
-    return error
+          const currentUser = await User.findOne({ _id: user.id })
+            .populate('posts')
+            .populate('followers')
+            .populate('following');
+          
+          return currentUser;
+        } catch(error) {
+          console.log('Error in getMe:', error);
+          throw error;
         }
       
       },
@@ -287,10 +290,12 @@ const resolvers = {
       }
 
       if (video) {
-        if (video.size > 100 * 1024 * 1024) {
-          throw new Error("Video should be under 100MB");
+        if (video.size > 300 * 1024 * 1024) {
+          throw new Error("Video should be under 300MB");
         }
-        videoUrl = await uploadToCloudinary(video, 'video');
+        const videoResponse = await uploadToCloudinary(video, 'video');
+        // Extract just the URL from the response object
+        videoUrl = videoResponse.url;
       }
 
       // Handle thumbnail for video posts

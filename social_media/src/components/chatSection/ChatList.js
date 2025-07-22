@@ -8,12 +8,16 @@ import {
   PaperClipIcon,
   PaperAirplaneIcon
 } from '@heroicons/react/24/outline';
+import EmojiMessageInput from "./EmojiMessageInput.js"; // path adjust karo
 import { GetTokenFromCookie } from '../getToken/GetToken';
 import socket from "../socket_io/Socket";
 import moment from 'moment';
 import { useNavigate } from 'react-router-dom';
+import GroupChat from './GroupChat';
+import { useQuery } from '@apollo/client';
+import { GET_USER_GROUPS } from '../../graphql/mutations';
 
-const ChatList = ({ activeTab }) => {
+const ChatList = ({ activeTab, createdGroups }) => {
   const [users, setUsers] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -243,16 +247,27 @@ const updateUsersOnlineStatus = () => {
 
   useEffect(() => {
     getUser();
-    
     // Set up periodic refresh of user list every 10 seconds
     const userRefreshInterval = setInterval(() => {
       getUser();
     }, 10000);
-    
     return () => {
       clearInterval(userRefreshInterval);
     };
   }, []);
+
+  // Apollo query for groups
+  const { data: groupsData, loading: groupsLoading, refetch: refetchGroups } = useQuery(GET_USER_GROUPS, {
+    variables: { userId: sender?.id },
+    skip: !sender?.id
+  });
+
+  // When a new group is created, refetch groups from backend
+  useEffect(() => {
+    if (activeTab === 'groups' && sender?.id) {
+      refetchGroups && refetchGroups();
+    }
+  }, [createdGroups, activeTab, sender?.id, refetchGroups]);
 
   let receiverId = selectedChat?.id;
   const getChat = async () => {
@@ -645,41 +660,77 @@ const updateUsersOnlineStatus = () => {
 
  
 
+  // Filter users for group or all chats based on activeTab
+  let displayedUsers = Array.isArray(users) ? users : [];
+  if (activeTab === 'groups') {
+    // Show backend groups, plus any new groups created in this session (not yet in backend response)
+    const backendGroups = (groupsData?.getUserGroups || []).map(g => ({
+      ...g,
+      id: g._id,
+      isGroup: true,
+      profileImage: g.groupImage // for compatibility
+    }));
+    // Add any createdGroups not present in backendGroups (by id)
+    const sessionGroups = (Array.isArray(createdGroups) ? createdGroups : []).filter(
+      cg => !backendGroups.some(bg => bg.id === cg.id)
+    );
+    displayedUsers = [...backendGroups, ...sessionGroups];
+  }
+
   return (
     <div className="flex flex-col md:flex-row h-full w-full">
       {/* Chat List */}
       <div className={`w-full md:w-1/3 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] overflow-hidden transition-all duration-300 ease-in-out md:ml-8 ${selectedChat ? 'hidden md:block' : 'block'}`}>
         <div className="overflow-y-auto h-full custom-scrollbar">
-          {users.map((user) => (
-            <div
-              key={user.id}
-              onClick={() => handleChatSelect(user)}
-              className={`flex items-center p-4 cursor-pointer transition-all duration-200 hover:bg-gray-50/80 ${selectedChat?.id === user.id ? 'bg-purple-50' : ''
-                }`}
-            >
-              <div className="flex items-center w-full">
-                <div className="relative flex-shrink-0">
-                  <img
-                    src={user.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}`}
-                    alt={user.name}
-                    className="w-12 h-12 rounded-full object-cover ring-2 ring-purple-100"
-                  />
-                  <span className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${onlineUsers.has(user.id) || user.isOnline === true ? 'bg-green-500 animate-pulse' : 'bg-gray-400'} transition-colors duration-300`}></span>
-                </div>
-                <div className="ml-3 flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-900 truncate">{user.name}</h3>
-                  <p className={`text-xs ${onlineUsers.has(user.id) || user.isOnline === true ? 'text-green-500' : 'text-gray-400'} truncate transition-colors duration-300 flex items-center`}>
-                    <span className={`inline-block w-2 h-2 rounded-full mr-1 ${onlineUsers.has(user.id) || user.isOnline === true ? 'bg-green-500 animate-pulse' : 'bg-gray-400'} transition-colors duration-300`}></span>
-                    {onlineUsers.has(user.id) || user.isOnline === true ? 'Online' : 'Offline'}
-                  </p>
+          {activeTab === 'groups' && displayedUsers.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-gray-400 text-sm p-8">There is no group chat</div>
+          ) : (
+            displayedUsers.map((user) => (
+              <div
+                key={user.id}
+                onClick={() => handleChatSelect(user)}
+                className={`flex items-center p-4 cursor-pointer transition-all duration-200 hover:bg-gray-50/80 ${selectedChat?.id === user.id ? 'bg-purple-50' : ''}`}
+              >
+                <div className="flex items-center w-full">
+                  <div className="relative flex-shrink-0">
+                    {user.isGroup ? (
+                      <img
+                        src={user.groupImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=8B5CF6&color=fff`}
+                        alt={user.name}
+                        className="w-12 h-12 rounded-full object-cover ring-2 ring-purple-100"
+                      />
+                    ) : (
+                      <img
+                        src={user.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}`}
+                        alt={user.name}
+                        className="w-12 h-12 rounded-full object-cover ring-2 ring-purple-100"
+                      />
+                    )}
+                    <span className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${onlineUsers.has(user.id) || user.isOnline === true ? 'bg-green-500 animate-pulse' : 'bg-gray-400'} transition-colors duration-300`}></span>
+                  </div>
+                  <div className="ml-3 flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate">{user.name}</h3>
+                    <p className={`text-xs ${onlineUsers.has(user.id) || user.isOnline === true ? 'text-green-500' : 'text-gray-400'} truncate transition-colors duration-300 flex items-center`}>
+                      <span className={`inline-block w-2 h-2 rounded-full mr-1 ${onlineUsers.has(user.id) || user.isOnline === true ? 'bg-green-500 animate-pulse' : 'bg-gray-400'} transition-colors duration-300`}></span>
+                      {onlineUsers.has(user.id) || user.isOnline === true ? 'Online' : 'Offline'}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
       <div className="flex-1 flex flex-col h-full min-h-0">
         {selectedChat ? (
+          selectedChat.isGroup ? (
+            <div className="bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:ml-8 md:mr-4 overflow-hidden h-full">
+              <GroupChat 
+                group={selectedChat} 
+                onBack={() => setSelectedChat(null)} 
+              />
+            </div>
+          ) : (
           <div className="flex flex-col h-full min-h-0 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:ml-8 md:mr-4 overflow-hidden transform transition-all duration-300 ease-in-out">
             {/* Header */}
             <div className="flex-none border-b border-gray-100 p-4 flex items-center justify-between bg-white">
@@ -721,7 +772,7 @@ const updateUsersOnlineStatus = () => {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar min-h-0 bg-gray-50">
               <div className="space-y-4">
-                {messages.map((msg) => {
+                {Array.isArray(messages) && messages.length > 0 && messages.map((msg) => {
                   const isSent = msg?.sender?.id === sender?.id;
                   let quoted = null;
                   let mainText = msg.message;
@@ -916,6 +967,7 @@ const updateUsersOnlineStatus = () => {
               </div>
             </div>
           </div>
+          )
         ) : (
           <div className="hidden md:flex flex-1 items-center justify-center bg-white ml-8 mr-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
             <div className="text-center animate-fadeIn">

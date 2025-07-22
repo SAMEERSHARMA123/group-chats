@@ -6,6 +6,11 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  // Add timeout configuration
+  timeout: 600000, // 10 minutes
+  secure: true,
+  // Add chunk size for large uploads
+  chunk_size: 6000000, // 6MB chunks
 });
 
 // const uploadToCloudinary = async (file) => {
@@ -66,6 +71,12 @@ const uploadToCloudinary = async (file, type = 'image') => {
 
   return new Promise(async (resolve, reject) => {
     try {
+      console.log(`🚀 Starting ${type} upload to Cloudinary:`, {
+        filename,
+        mimetype,
+        type
+      });
+
       const stream = createReadStream();
       const chunks = [];
 
@@ -73,6 +84,8 @@ const uploadToCloudinary = async (file, type = 'image') => {
         chunks.push(chunk);
       }
       const buffer = Buffer.concat(chunks);
+      
+      console.log(`📦 Buffer created, size: ${(buffer.length / (1024 * 1024)).toFixed(2)} MB`);
 
       let uploadBuffer = buffer;
       let format = undefined;
@@ -91,13 +104,28 @@ const uploadToCloudinary = async (file, type = 'image') => {
           resource_type: type, // 'image' or 'video'
           folder: 'posts',
           format: format, // only used for image
+          // Add timeout for upload
+          timeout: 600000, // 10 minutes
+          // Add chunk size for large uploads
+          chunk_size: 6000000, // 6MB chunks
+          // Add eager transformation for videos to ensure processing
+          eager_async: true,
         },
         (err, result) => {
           if (err) {
-            console.error('❌ Cloudinary Upload Error:', err);
-            reject(err);
+            console.error('❌ Cloudinary Upload Error:', {
+              error: err.message,
+              http_code: err.http_code,
+              name: err.name
+            });
+            reject(new Error(`Cloudinary upload failed: ${err.message}`));
           } else {
-            console.log('✅ Cloudinary Upload Success:', result.secure_url);
+            console.log('✅ Cloudinary Upload Success:', {
+              url: result.secure_url,
+              bytes: result.bytes,
+              duration: result.duration,
+              format: result.format
+            });
             
             // For videos, return metadata along with URL
             if (type === 'video') {

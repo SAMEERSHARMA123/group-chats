@@ -135,7 +135,7 @@ export const SEARCH_USER = gql`
 
 export const SEARCH_USERS = gql`
   query SearchUsers($searchTerm: String!) {
-    searchUsers(searchTerm: $searchTerm) {
+    searchUsers(username: $searchTerm) {
       id
       name
       username
@@ -432,6 +432,142 @@ export const TRACK_VIDEO_VIEW = gql`
     trackVideoView(videoId: $videoId) {
       id
       views
+    }
+  }
+`;
+
+// Group Chat Mutations and Queries
+export const CREATE_GROUP = gql`
+  mutation CreateGroup($input: CreateGroupInput!) {
+    createGroup(input: $input) {
+      _id
+      name
+      description
+      groupImage
+      members {
+        id
+        name
+        username
+        profileImage
+      }
+      admins {
+        id
+        name
+        username
+        profileImage
+      }
+      createdBy {
+        id
+        name
+        username
+        profileImage
+      }
+      isPrivate
+      maxMembers
+      memberCount
+      createdAt
+    }
+  }
+`;
+
+export const GET_USER_GROUPS = gql`
+  query GetUserGroups($userId: ID!) {
+    getUserGroups(userId: $userId) {
+      _id
+      name
+      description
+      groupImage
+      members {
+        id
+        name
+        username
+        profileImage
+        isOnline
+      }
+      lastMessage {
+        content
+        sender {
+          name
+          username
+        }
+        timestamp
+      }
+      memberCount
+      updatedAt
+    }
+  }
+`;
+
+export const SEND_GROUP_MESSAGE = gql`
+  mutation SendGroupMessage(
+    $groupId: ID!
+    $content: String
+    $messageType: String
+    $media: MediaInput
+    $replyTo: ID
+  ) {
+    sendGroupMessage(
+      groupId: $groupId
+      content: $content
+      messageType: $messageType
+      media: $media
+      replyTo: $replyTo
+    ) {
+      _id
+      content
+      messageType
+      sender {
+        id
+        name
+        username
+        profileImage
+      }
+      media {
+        url
+        type
+        filename
+      }
+      createdAt
+    }
+  }
+`;
+
+export const GET_GROUP_MESSAGES = gql`
+  query GetGroupMessages($groupId: ID!, $limit: Int, $offset: Int) {
+    getGroupMessages(groupId: $groupId, limit: $limit, offset: $offset) {
+      _id
+      content
+      messageType
+      sender {
+        id
+        name
+        username
+        profileImage
+      }
+      media {
+        url
+        type
+        filename
+      }
+      replyTo {
+        _id
+        content
+        sender {
+          name
+        }
+      }
+      createdAt
+    }
+  }
+`;
+
+export const SEARCH_USERS_FOR_GROUP = gql`
+  query SearchUsers($query: String!) {
+    searchUsers(username: $query) {
+      id
+      name
+      username
+      profileImage
     }
   }
 `;

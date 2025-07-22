@@ -117,9 +117,16 @@ const videoResolvers = {
           throw new Error("Title and video file are required");
         }
 
-        // Validate video file size (100MB limit)
-        if (video.size && video.size > 100 * 1024 * 1024) {
-          throw new Error("Video file size should be under 100MB");
+        // Log video file details for debugging
+        console.log('📹 Video upload details:', {
+          filename: video.filename,
+          mimetype: video.mimetype,
+          size: video.size ? `${(video.size / (1024 * 1024)).toFixed(2)} MB` : 'Unknown'
+        });
+
+        // Validate video file size (500MB limit)
+        if (video.size && video.size > 500 * 1024 * 1024) {
+          throw new Error("Video file size should be under 500MB");
         }
 
         // Upload video to cloudinary and get metadata
@@ -150,7 +157,7 @@ const videoResolvers = {
         const newVideo = await Video.create({
           title,
           description: description || "",
-          videoUrl,
+          videoUrl, // Now this is just the URL string
           thumbnailUrl,
           duration: videoDuration,
           fileSize: videoFileSize,

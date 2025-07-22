@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "start": "node --max-old-space-size=4096 app.js",
+    "dev": "nodemon --max-old-space-size=4096 app.js"
+  },
   "dependencies": {
     "@zegocloud/zego-uikit-prebuilt": "^2.15.0",
     "apollo-server-express": "^3.13.0",

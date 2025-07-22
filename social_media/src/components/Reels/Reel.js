@@ -277,6 +277,23 @@ const Reel = () => {
     // eslint-disable-next-line
   }, [currentVideoIndex, incrementVideoViews]);
 
+  // After updating currentVideoIndex (in useEffect), pause all videos and play only the current one
+  useEffect(() => {
+    // Pause all videos
+    const allVideoEls = document.querySelectorAll('video');
+    allVideoEls.forEach((vid, idx) => {
+      if (idx !== currentVideoIndex) {
+        vid.pause();
+        vid.currentTime = 0;
+      }
+    });
+    // Play the current video
+    const currentVideoEl = allVideoEls[currentVideoIndex];
+    if (currentVideoEl) {
+      currentVideoEl.play();
+    }
+  }, [currentVideoIndex]);
+
   // Render individual reel card
   const renderReelCard = (video, index, offset = 0) => {
     if (!video) return null;
